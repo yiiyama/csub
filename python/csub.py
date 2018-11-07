@@ -9,7 +9,6 @@ class CondorSubmit(object):
 
     def __init__(self, executable):
         self.executable = executable
-        self.transfer_exec = False
         self.hold_on_fail = False
         self.requirements = ''
         self.os = ''
@@ -99,8 +98,6 @@ class CondorSubmit(object):
         jdl.append(('rank', '32 - TARGET.SlotID')) # evenly distribute jobs across machines
 
         input_files = [logdir + '/env.sh'] + self.aux_input
-        if self.transfer_exec:
-            input_files.append(os.path.realpath(self.executable))
         jdl.append(('transfer_input_files', ','.join(input_files)))
 
         jdl.append(('transfer_output_files', '""'))
@@ -121,10 +118,7 @@ class CondorSubmit(object):
             jdl.append(('output', logdir + '/$(Cluster).$(Process).out'))
             jdl.append(('error', logdir + '/$(Cluster).$(Process).err'))
 
-        if self.transfer_exec:
-            arg = '"./' + os.path.basename(self.executable)
-        else:
-            arg = '"' + re.sub('^/export', '', os.path.realpath(self.executable))
+        arg = '"' + os.path.realpath(self.executable)
 
         arg += ' ' + self.pre_args
 
