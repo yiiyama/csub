@@ -1,0 +1,75 @@
+#!/usr/bin/env python
+
+import sys
+import os
+import time
+import subprocess
+import re
+from argparse import ArgumentParser
+
+# Add csub lib to PYTHONPATH
+sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))) + '/python')
+from csub import CondorSubmit
+
+argParser = ArgumentParser(description = 'Run simple jobs on condor')
+argParser.add_argument('executable', metavar = 'EXEC', help = 'Executable to run.')
+argParser.add_argument('--name', '-w', metavar = 'NAME', dest = 'name', default = '', help = 'Name of the task.')
+argParser.add_argument('--job-args', '-a', metavar = 'ARGS', dest = 'jobArgs', nargs = '+', help = 'Arguments for each job.')
+argParser.add_argument('--arg-file', '-i', metavar = 'PATH', dest = 'argFile', default = '', help = 'File with a list of arguments. Each line of the file is the argument to one job.')
+argParser.add_argument('--common-pre-args', '-e', metavar = 'ARGS', dest = 'commonPreargs', default = '', help = 'Common arguments placed before job arguments.')
+argParser.add_argument('--common-post-args', '-t', metavar = 'ARGS', dest = 'commonPostargs', default = '', help = 'Common arguments placed after job arguments.')
+argParser.add_argument('--auxiliary-input', '-x', metavar = 'PATHS', dest = 'auxInput', nargs = '+', default = [], help = 'Auxiliary input files.')
+argParser.add_argument('--num-jobs', '-n', metavar = 'NUM', dest = 'numJobs', type = int, default = 1, help = 'Number of jobs per job argument.')
+argParser.add_argument('--no-subindex', '-S', action = 'store_true', dest = 'noAppendStep', help = 'Do not append the repeat job index to the job arguments, when --num-jobs > 1.')
+argParser.add_argument('--requirements', '-q', metavar = 'EXPR', dest = 'requirements', default = '', help = 'Condor job requirements.')
+argParser.add_argument('--os', '-s', metavar = 'SYSTEM', dest = 'os', default = 'SLCern6', help = 'Target OS.')
+argParser.add_argument('--group', '-g', metavar = 'GROUP', dest = 'group', default = 'group_u_CMS.u_zh', help = 'Condor accounting group.')
+argParser.add_argument('--flavour', '-f', metavar = 'FLAVOUR', dest = 'flavour', default = 'espresso', help = 'CERN HTCondor job flavour (espresso, microcentury, longlunch, workday, tomorrow, testmatch, nextweek)')
+argParser.add_argument('--cpu', '-j', metavar = 'VAL', dest = 'cpu', type = int, default = 1, help = 'CPU requirement.')
+argParser.add_argument('--memory', '-m', metavar = 'VAL', dest = 'memory', type = int, default = 100, help = 'Memory requirement.')
+argParser.add_argument('--exclude-host', '-c', metavar = 'HOST', dest = 'excludeHost', nargs = '+', help = 'Exclude listed hosts.')
+argParser.add_argument('--cmst3', '-M', action = 'store_true', dest = 'cmst3', help = 'Set group to group_u_CMST3.all. Supercedes --group.')
+argParser.add_argument('--transfer-executable', '-X', action = 'store_true', dest = 'tferExec', help = 'Transfer the executable as input.')
+argParser.add_argument('--hold-on-fail', '-H', action = 'store_true', dest = 'holdOnFail', help = 'Hold jobs if return code != 0.')
+argParser.add_argument('--log-dir', '-l', metavar = 'PATH', dest = 'logdir', default = os.environ['HOME'] + '/csublog', help = 'Log super directory (logs will be written in PATH/timestamp/ or PATH/name if --name is given).')
+argParser.add_argument('--clear-log', '-E', action = 'store_true', dest = 'clearLog', help = 'Clear the log directory before submitting jobs.')
+
+args = argParser.parse_args()
+sys.argv = []
+
+if args.jobArgs is not None and args.argFile != '':
+    print '-j and -a options cannot be used together.'
+    sys.exit(1)
+
+submitter = CondorSubmit(args.executable)
+submitter.transfer_exec = args.tferExec
+submitter.hold_on_fail = args.holdOnFail
+submitter.requirements = args.requirements
+submitter.os = args.os
+submitter.group = 'group_u_CMST3.all' if args.cmst3 else args.group
+submitter.flavour = args.flavour
+submitter.aux_input = args.auxInput
+submitter.request_cpus = args.cpu
+submitter.request_memory = args.memory
+submitter.num_repeats = args.numJobs
+submitter.append_step = not args.noAppendStep
+submitter.pre_args = args.commonPreargs
+submitter.post_args = args.commonPostargs
+submitter.logdir = args.logdir
+submitter.clear_log = args.clearLog
+
+if args.excludeHost:
+    for host in args.excludeHost:
+        submitter.requirements += ' && Machine != "%s"' % host.upper()
+
+if args.jobArgs:
+    submitter.job_args = args.jobArgs
+elif args.argFile:
+    with open(args.argFile) as argFile:
+        for line in argFile:
+            if line.strip().startswith('#'):
+                continue
+
+            submitter.job_args.append(line.strip())
+
+submitter.submit(args.name)
