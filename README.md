@@ -49,4 +49,4 @@ Job submission options
 Log output
 ==========
 
-.out, .err, and .log files are written to <logdir>/<tag> where <logdir> is specified by option `--log-dir` (defaule $HOME/csublogs) and <tag> is either the UNIX timestamp of the submission time or the string passed as `--name`.
+.out, .err, and .log files are written to <logdir>/<tag> where <logdir> is specified by option `--log-dir` (defaults to $CSUB_LOGDIR if set, otherwise $HOME/csublog) and <tag> is either the UNIX timestamp of the submission time or the string passed as `--name`.

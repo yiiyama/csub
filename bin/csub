@@ -2,6 +2,7 @@
 
 import sys
 import os
+import errno
 import time
 import subprocess
 import re
@@ -46,7 +47,13 @@ if not args.logdir.strip():
     except KeyError:
         args.logdir = os.environ['HOME'] + '/csublog'
 
-    os.makedirs(args.logdir)
+    try:
+        os.makedirs(args.logdir)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST:
+            pass
+        else:
+            raise
 
 submitter = CondorSubmit(args.executable)
 submitter.hold_on_fail = args.holdOnFail
