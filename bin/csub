@@ -30,7 +30,7 @@ argParser.add_argument('--cpu', '-j', metavar = 'VAL', dest = 'cpu', type = int,
 argParser.add_argument('--memory', '-m', metavar = 'VAL', dest = 'memory', type = int, default = 100, help = 'Memory requirement.')
 argParser.add_argument('--exclude-host', '-c', metavar = 'HOST', dest = 'excludeHost', nargs = '+', help = 'Exclude listed hosts.')
 argParser.add_argument('--hold-on-fail', '-H', action = 'store_true', dest = 'holdOnFail', help = 'Hold jobs if return code != 0.')
-argParser.add_argument('--log-dir', '-l', metavar = 'PATH', dest = 'logdir', default = os.environ['HOME'] + '/csublog', help = 'Log super directory (logs will be written in PATH/timestamp/ or PATH/name if --name is given).')
+argParser.add_argument('--log-dir', '-l', metavar = 'PATH', dest = 'logdir', default = '', help = 'Log super directory. Defaults to environment CSUB_LOGDIR if set, otherwise $HOME/csublog. Log files will be written in PATH/timestamp/ or PATH/name if --name is given.')
 argParser.add_argument('--clear-log', '-E', action = 'store_true', dest = 'clearLog', help = 'Clear the log directory before submitting jobs.')
 
 args = argParser.parse_args()
@@ -39,6 +39,14 @@ sys.argv = []
 if args.jobArgs is not None and args.argFile != '':
     print '-a and -i options cannot be used together.'
     sys.exit(1)
+
+if not args.logdir.strip():
+    try:
+        args.logdir = os.environ['CSUB_LOGDIR']
+    except KeyError:
+        args.logdir = os.environ['HOME'] + '/csublog'
+
+    os.makedirs(args.logdir)
 
 submitter = CondorSubmit(args.executable)
 submitter.hold_on_fail = args.holdOnFail
