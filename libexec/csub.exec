@@ -1,0 +1,34 @@
+#!/bin/bash
+
+source env.sh
+
+ARGS="$@"
+
+# Get the requied OS (if there is any) from the job ad (I think there was a better way to do this)
+REQUIRED_OS=$(sed -n 's/REQUIRED_OS *= *"\([^"]*\)"/\1/p' $PWD/.job.ad)
+# Get the actual OS version from uname
+OSVERSION=$(uname -r | sed 's/[0-9.-]*\.\([^.]*\).*/\1/')
+[ $OSVERSION = "el6" ] && OSVERSION="rhel6"
+[ $OSVERSION = "el7" ] && OSVERSION="rhel7"
+
+echo REQUIRED_OS=$REQUIRED_OS
+echo OSVERSION=$OSVERSION
+
+if [ "$REQUIRED_OS" ] && [ $REQUIRED_OS != $OSVERSION ]
+then
+
+  WORKDIR=$PWD
+
+  #SINGULARITY_OPTS="--bind /etc/condor --bind /cvmfs/cms.cern.ch --bind /eos/cms/store"
+  SINGULARITY_OPTS="--bind $WORKDIR --bind /cvmfs/cms.cern.ch --bind /eos/cms/store --bind /afs/cern.ch/work/y/yiiyama --pwd $WORKDIR"
+  SINGULARITY_IMGBASE=/cvmfs/singularity.opensciencegrid.org/cmssw/cms
+
+  # PATH and LD_LIBRARY_PATH gets overwritten by singularity. Variables SINGULARITYENV_X are exported into the container.
+  export SINGULARITYENV_PATH=$PATH
+  export SINGULARITYENV_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
+  echo /usr/bin/singularity exec $SINGULARITY_OPTS $SINGULARITY_IMGBASE:$REQUIRED_OS $CSUB_EXECUTABLE $ARGS
+  exec /usr/bin/singularity exec $SINGULARITY_OPTS $SINGULARITY_IMGBASE:$REQUIRED_OS $CSUB_EXECUTABLE $ARGS
+
+else
+  exec $CSUB_EXECUTABLE $ARGS
+fi

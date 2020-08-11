@@ -5,13 +5,18 @@ import subprocess
 import re
 # cannot use htcondor python binding because CMS python environment does not have the libraries
 
+this_package = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+
 class CondorSubmit(object):
+
+    OSName = {'rhel6': 'SLCern6', 'rhel7': 'CentOS7'}
 
     def __init__(self, executable):
         self.executable = executable
         self.hold_on_fail = False
         self.requirements = ''
         self.os = ''
+        self.setenv = True
         self.arch = 'X86_64'
         self.group = 'group_u_CMS.u_zh'
         self.flavour = 'espresso'
@@ -25,6 +30,8 @@ class CondorSubmit(object):
         self.pre_args = ''
         self.post_args = ''
 
+        self.cwd = ''
+
         self.job_names = []
 
         self.logdir = '/tmp'
@@ -33,6 +40,9 @@ class CondorSubmit(object):
         self.last_submit = [] # [(cluster id, job name)] of last submit if job_names are set
 
     def submit(self, name = ''):
+        if self.os and self.os not in self.OSName:
+            raise RuntimeError('Invalid os')
+
         if name:
             logdir = self.logdir +'/' + name
         else:
@@ -58,14 +68,17 @@ class CondorSubmit(object):
             use_job_names = False
 
         with open(logdir + '/env.sh', 'w') as envfile:
-            for key, value in os.environ.items():
-                if key in ['PWD', 'OLDPWD', 'TMPDIR']:
-                    continue
-                elif key.startswith('BASH_FUNC_'):
-                    envfile.write(key.replace('BASH_FUNC_', '') + ' ' + value[2:] + '\n')
-                    envfile.write('export -f ' + key.replace('BASH_FUNC_', '').replace('()', '') + '\n')
-                else:
-                    envfile.write('export ' + key + '="' + value.replace('"', '\\"') + '"\n')
+            if self.setenv:
+                for key, value in os.environ.items():
+                    if key in ['PWD', 'OLDPWD', 'TMPDIR']:
+                        continue
+                    elif key.startswith('BASH_FUNC_'):
+                        envfile.write(key.replace('BASH_FUNC_', '') + ' ' + value[2:] + '\n')
+                        envfile.write('export -f %s\n' % key.replace('BASH_FUNC_', '').replace('()', ''))
+                    else:
+                        envfile.write('export %s="%s"\n' % (key, value.replace('"', '\\"')))
+
+            envfile.write('CSUB_EXECUTABLE=%s' % os.path.realpath(self.executable))
 
         with open(logdir + '/jobs.dat', 'w') as jobs_file:
             jobs_file.write('[EXECUTABLE] ' + os.path.realpath(self.executable) + '\n')
@@ -78,12 +91,15 @@ class CondorSubmit(object):
                     else:
                         jobs_file.write('%d: %s\n' % (ijob, job_arg))
 
-        with open(logdir + '/csub.exec', 'w') as wrapper:
-            # Condor executable - sources env.sh and switches process image to the executable
-            wrapper.write('#!/bin/bash\n\nsource env.sh\nEXECUTABLE=$1\nshift\nARGS="$@"\nexec $EXECUTABLE $ARGS\n')
+        if name:
+            exec_name = '%s/%s.exec' % (logdir, name)
+        else:
+            exec_name = '%s/csub.exec' % logdir
+
+        shutil.copyfile('%s/libexec/csub.exec' % this_package, exec_name)
 
         jdl = []
-        jdl.append(('executable', logdir + '/csub.exec'))
+        jdl.append(('executable', exec_name))
         jdl.append(('universe', 'vanilla'))
         jdl.append(('should_transfer_files', 'YES'))
         jdl.append(('input', '/dev/null'))
@@ -92,7 +108,8 @@ class CondorSubmit(object):
             requirements.append(self.requirements)
         if self.os:
             jdl.append(('+REQUIRED_OS', '"%s"' % self.os))
-            requirements.append('OpSysAndVer == "%s" || HasSingularity =?= true' % self.os)
+            #requirements.append('OpSysAndVer == "%s" || HasSingularity =?= true' % self.OSName[self.os])
+            requirements.append('OpSysAndVer == "%s"' % self.OSName[self.os])
 
         jdl.append(('requirements', ' && '.join(['(%s)' % r for r in requirements])))
         jdl.append(('rank', '32 - TARGET.SlotID')) # evenly distribute jobs across machines
@@ -118,14 +135,15 @@ class CondorSubmit(object):
             jdl.append(('output', logdir + '/$(Cluster).$(Process).out'))
             jdl.append(('error', logdir + '/$(Cluster).$(Process).err'))
 
-        arg = '"' + os.path.realpath(self.executable)
-
-        arg += ' ' + self.pre_args
+        arg = '"'
+        if self.pre_args:
+            arg += self.pre_args
 
         if len(job_args) != 0:
             arg += ' $(JobArgs)'
 
-        arg += ' ' + self.post_args
+        if self.post_args:
+            arg += ' ' + self.post_args
 
         if self.num_repeats > 1 and self.append_step:
             arg += ' $(Step)'

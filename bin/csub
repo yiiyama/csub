@@ -2,6 +2,7 @@
 
 import sys
 import os
+import stat
 import errno
 import time
 import subprocess
@@ -20,10 +21,12 @@ argParser.add_argument('--arg-file', '-i', metavar = 'PATH', dest = 'argFile', d
 argParser.add_argument('--common-pre-args', '-e', metavar = 'ARGS', dest = 'commonPreargs', default = '', help = 'Common arguments placed before job arguments.')
 argParser.add_argument('--common-post-args', '-t', metavar = 'ARGS', dest = 'commonPostargs', default = '', help = 'Common arguments placed after job arguments.')
 argParser.add_argument('--auxiliary-input', '-x', metavar = 'PATHS', dest = 'auxInput', nargs = '+', default = [], help = 'Auxiliary input files.')
+argParser.add_argument('--clean-env', '-V', action = 'store_true', dest = 'cleanEnv', help = 'Do not propagate current shell environment to the jobs.')
 argParser.add_argument('--num-jobs', '-n', metavar = 'NUM', dest = 'numJobs', type = int, default = 1, help = 'Number of jobs per job argument.')
 argParser.add_argument('--no-subindex', '-S', action = 'store_true', dest = 'noAppendStep', help = 'Do not append the repeat job index to the job arguments, when --num-jobs > 1.')
 argParser.add_argument('--requirements', '-q', metavar = 'EXPR', dest = 'requirements', default = '', help = 'Condor job requirements.')
-argParser.add_argument('--os', '-s', metavar = 'SYSTEM', dest = 'os', default = 'SLCern6', help = 'Target OS.')
+argParser.add_argument('--cwd', '-p', metavar = 'PATH', dest = 'cwd', default = '', help = 'Job working directory.')
+argParser.add_argument('--os', '-s', metavar = 'SYSTEM', dest = 'os', default = '', help = 'Target OS.')
 argParser.add_argument('--group', '-g', metavar = 'GROUP', dest = 'group', default = 'group_u_CMS.u_zh', help = 'Condor accounting group.')
 argParser.add_argument('--cmst3', '-M', action = 'store_true', dest = 'cmst3', help = 'Set group to group_u_CMST3.all. Supercedes --group.')
 argParser.add_argument('--flavour', '-f', metavar = 'FLAVOUR', dest = 'flavour', default = 'espresso', help = 'CERN HTCondor job flavour (espresso, microcentury, longlunch, workday, tomorrow, testmatch, nextweek)')
@@ -55,10 +58,15 @@ if not args.logdir.strip():
         else:
             raise
 
+if (stat.S_IMODE(os.stat(args.executable).st_mode) & stat.S_IXUSR) == 0:
+    print args.executable, 'is not executable.'
+    sys.exit(2)
+
 submitter = CondorSubmit(args.executable)
 submitter.hold_on_fail = args.holdOnFail
 submitter.requirements = args.requirements
 submitter.os = args.os
+submitter.setenv = (not args.cleanEnv)
 submitter.group = 'group_u_CMST3.all' if args.cmst3 else args.group
 submitter.flavour = args.flavour
 submitter.aux_input = args.auxInput
@@ -68,6 +76,7 @@ submitter.num_repeats = args.numJobs
 submitter.append_step = not args.noAppendStep
 submitter.pre_args = args.commonPreargs
 submitter.post_args = args.commonPostargs
+submitter.cwd = args.cwd
 submitter.logdir = args.logdir
 submitter.clear_log = args.clearLog
 
